@@ -52,17 +52,14 @@ class SentenceEmbedding(nn.Module):
     
     def tokenize(self, sentences, start_token, end_token):
         sentences = list(sentences)
-        bos_token = self.tokenizer.bos_id()
-        eos_token = self.tokenizer.eos_id()
-        pad_token = self.tokenizer.pad_id()
         tokenized_sentences = self.tokenizer.EncodeAsIds(sentences)
         if start_token:
-            tokenized_sentences = [[bos_token] + sentence for sentence in tokenized_sentences]
+            tokenized_sentences = [[self.START_TOKEN] + sentence for sentence in tokenized_sentences]
         if end_token:
-            tokenized_sentences = [sentence + [eos_token] for sentence in tokenized_sentences]
+            tokenized_sentences = [sentence + [self.END_TOKEN] for sentence in tokenized_sentences]
         for _ in range(len(tokenized_sentences[0]), self.max_sequence_length):
-            tokenized_sentences[0].append(pad_token)
-        return pad_sequence([torch.LongTensor(np.array(l_)) for l_ in tokenized_sentences], batch_first=True, padding_value=pad_token).to(get_device())
+            tokenized_sentences[0].append(self.PADDING_TOKEN)
+        return pad_sequence([torch.LongTensor(np.array(l_)) for l_ in tokenized_sentences], batch_first=True, padding_value=self.PADDING_TOKEN).to(get_device())
     
     def forward(self, x, start_token, end_token):
         x = self.tokenize(x, start_token, end_token)
@@ -165,10 +162,11 @@ class Encoder(nn.Module):
                  max_sequence_length,
                  tokenizer,
                  START_TOKEN,
-                 END_TOKEN
+                 END_TOKEN,
+                 PADDING_TOKEN
                  ):
         super().__init__()
-        self.sentence_embedding = SentenceEmbedding(max_sequence_length, d_model, tokenizer, START_TOKEN, END_TOKEN, True)
+        self.sentence_embedding = SentenceEmbedding(max_sequence_length, d_model, tokenizer, START_TOKEN, END_TOKEN, PADDING_TOKEN)
         self.layers = SequentialEncoder(*[EncoderLayer(d_model, ffn_hidden, num_heads, drop_prob)
                                       for _ in range(num_layers)])
 
@@ -253,10 +251,11 @@ class Decoder(nn.Module):
                  max_sequence_length,
                  tokenizer,
                  START_TOKEN,
-                 END_TOKEN
+                 END_TOKEN,
+                 PADDING_TOKEN
                  ):
         super().__init__()
-        self.sentence_embedding = SentenceEmbedding(max_sequence_length, d_model, tokenizer, START_TOKEN, END_TOKEN, True)
+        self.sentence_embedding = SentenceEmbedding(max_sequence_length, d_model, tokenizer, START_TOKEN, END_TOKEN, PADDING_TOKEN)
         self.layers = SequentialDecoder(*[DecoderLayer(d_model, ffn_hidden, num_heads, drop_prob) for _ in range(num_layers)])
 
     def forward(self, x, y, self_attention_mask, cross_attention_mask, start_token, end_token):
@@ -275,15 +274,18 @@ class Transformer(nn.Module):
                 max_sequence_length, 
                 kn_vocab_size,
                 english_tokenizer,
-                chinese_tokenizer,
+                french_tokenizer,
                 START_TOKEN,
                 END_TOKEN,
+                PADDING_TOKEN
                 ):
         super().__init__()
-        self.encoder = Encoder(d_model, ffn_hidden, num_heads, drop_prob, num_layers, max_sequence_length, english_tokenizer, START_TOKEN, END_TOKEN)
-        self.decoder = Decoder(d_model, ffn_hidden, num_heads, drop_prob, num_layers, max_sequence_length, chinese_tokenizer, START_TOKEN, END_TOKEN)
+        self.encoder = Encoder(d_model, ffn_hidden, num_heads, drop_prob, num_layers, max_sequence_length, english_tokenizer, START_TOKEN, END_TOKEN, PADDING_TOKEN)
+        self.decoder = Decoder(d_model, ffn_hidden, num_heads, drop_prob, num_layers, max_sequence_length, french_tokenizer, START_TOKEN, END_TOKEN, PADDING_TOKEN)
         self.linear = nn.Linear(d_model, kn_vocab_size)
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        self.french_tokenizer = french_tokenizer
+        self.english_tokenizer = english_tokenizer
 
     def forward(self, 
                 x, 
